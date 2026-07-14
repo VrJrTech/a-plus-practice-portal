@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Training Center | A+ Practice Portal</title>
+
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="app-container">
+    <nav class="top-nav">
+      <a href="index.html">🏠 Home</a>
+      <a href="quiz.html">🏀 Training Center</a>
+      <a href="leaderboard.html">🏆 Leaderboards</a>
+    </nav>
+
+    <section id="setup-screen" class="quiz-card center-page">
+      <div class="training-content center-page">
+        <div class="center-brand">
+          <div class="brand-pill">🧪 RossHouse Labs</div>
+        </div>
+
+        <h1>🏀 Training Center</h1>
+
+        <p class="description">
+          Choose a training category, enter your Tech Handle, and get your reps in.
+        </p>
+
+        <label for="student-name">👤 Tech Handle</label>
+
+        <input
+          type="text"
+          id="student-name"
+          placeholder="Example: CyberJunebug"
+        />
+
+        <label for="quiz-select">
+          Choose Training Category
+        </label>
+
+        <select id="quiz-select">
+          <optgroup label="🖥️ CompTIA A+ Core 1">
+            <option value="Hardware">Hardware</option>
+            <option value="Networking">Networking</option>
+            <option value="Mobile Devices">Mobile Devices</option>
+            <option value="Virtualization & Cloud">
+              Virtualization & Cloud
+            </option>
+            <option value="Hardware & Network Troubleshooting">
+              Hardware & Network Troubleshooting
+            </option>
+          </optgroup>
+
+          <optgroup label="🛡️ CompTIA A+ Core 2">
+            <option value="Operating Systems">
+              Operating Systems
+            </option>
+            <option value="Security">Security</option>
+            <option value="Software Troubleshooting">
+              Software Troubleshooting
+            </option>
+            <option value="Operational Procedures">
+              Operational Procedures
+            </option>
+          </optgroup>
+
+          <optgroup label="📝 Exam Mode">
+            <option value="Full A+ Exam">
+              Full A+ Practice Exam
+            </option>
+          </optgroup>
+        </select>
+
+        <div id="exam-options" class="exam-options hidden">
+          <div class="exam-option-text">
+            <strong>⏱️ Timed Exam</strong>
+            <span>90 questions in 90 minutes</span>
+          </div>
+
+          <label class="timer-toggle" for="timed-exam-toggle">
+            <input
+              type="checkbox"
+              id="timed-exam-toggle"
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="button-group center-buttons">
+          <button id="start-quiz" class="btn primary">
+            🏀 Start Training
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section id="quiz-screen" class="quiz-card hidden">
+      <div id="exam-timer" class="exam-timer hidden">
+        <span>⏱️ Time Remaining</span>
+        <strong id="timer-display">90:00</strong>
+      </div>
+
+      <div class="progress-wrapper">
+        <div id="progress-bar"></div>
+      </div>
+
+      <p id="question-count"></p>
+
+      <h2 id="question-text"></h2>
+
+      <div id="choices-container"></div>
+
+      <div class="quiz-buttons">
+        <button id="prev-btn" class="btn secondary">
+          ⬅ Previous
+        </button>
+
+        <button id="next-btn" class="btn primary">
+          Next Rep ➜
+        </button>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>
+        Built by Vincent Ross Jr. |
+        Powered by RossHouse Labs |
+        Version 1.0.0
+      </p>
+
+      <p>
+        Questions or feedback?
+        <a href="contact.html">📬 Contact</a>
+      </p>
+    </footer>
+  </div>
+
+  <script src="js/questions/core1/hardware.js"></script>
+  <script src="js/questions/core1/mobile-devices.js"></script>
+  <script src="js/questions/core1/networking.js"></script>
+  <script src="js/questions/core1/virtualization-cloud.js"></script>
+  <script src="js/questions/core1/hardware-network-troubleshooting.js"></script>
+
+  <script src="js/questions/core2/operating-systems.js"></script>
+  <script src="js/questions/core2/security.js"></script>
+  <script src="js/questions/core2/software-troubleshooting.js"></script>
+  <script src="js/questions/core2/operational-procedures.js"></script>
+
+  <script src="js/questions/questionBank.js"></script>
+  <script src="js/quiz.js"></script>
+</body>
+</html>

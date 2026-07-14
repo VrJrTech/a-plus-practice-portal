@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Leaderboards | A+ Practice Portal</title>
+
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="app-container">
+    <nav class="top-nav">
+      <a href="index.html">🏠 Home</a>
+      <a href="quiz.html">🏀 Training Center</a>
+      <a href="leaderboard.html">🏆 Leaderboards</a>
+    </nav>
+
+    <section class="quiz-card center-page">
+      <div class="center-brand">
+        <div class="brand-pill">🧪 RossHouse Labs</div>
+      </div>
+
+      <h1>🏆 Leaderboards</h1>
+
+      <p class="description">
+        See the top Tech Handles by training category.
+        Get your reps in and climb the board.
+      </p>
+
+      <div style="max-width: 700px; margin: 0 auto 35px;">
+        <label for="leaderboard-filter">
+          Choose Training Category
+        </label>
+
+        <select id="leaderboard-filter">
+          <optgroup label="🖥️ CompTIA A+ Core 1">
+            <option value="Hardware">Hardware</option>
+            <option value="Networking">Networking</option>
+            <option value="Mobile Devices">Mobile Devices</option>
+            <option value="Virtualization & Cloud">
+              Virtualization & Cloud
+            </option>
+            <option value="Hardware & Network Troubleshooting">
+              Hardware & Network Troubleshooting
+            </option>
+          </optgroup>
+
+          <optgroup label="🛡️ CompTIA A+ Core 2">
+            <option value="Operating Systems">
+              Operating Systems
+            </option>
+            <option value="Security">Security</option>
+            <option value="Software Troubleshooting">
+              Software Troubleshooting
+            </option>
+            <option value="Operational Procedures">
+              Operational Procedures
+            </option>
+          </optgroup>
+
+          <optgroup label="📝 Exam Mode">
+            <option value="Full A+ Exam">
+              Full A+ Practice Exam
+            </option>
+          </optgroup>
+        </select>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Tech Handle</th>
+            <th>Training Set</th>
+            <th>Score</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+
+        <tbody id="leaderboard-body"></tbody>
+      </table>
+    </section>
+
+    <footer class="footer">
+      <p>
+        Built by Vincent Ross Jr. |
+        Powered by RossHouse Labs |
+        Version 1.0.0
+      </p>
+
+      <p>
+        Questions or feedback?
+        <a href="contact.html">📬 Contact</a>
+      </p>
+    </footer>
+  </div>
+
+  <script src="js/leaderboard.js"></script>
+</body>
+</html>
