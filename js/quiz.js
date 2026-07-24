@@ -1,3 +1,7 @@
+"use strict";
+
+// A+ Practice Portal quiz engine — hardened against sparse arrays and bad data.
+
 let currentQuestions = [];
 let currentQuestionIndex = 0;
 let userAnswers = [];
@@ -9,43 +13,80 @@ let examEndTime = null;
 let quizFinished = false;
 
 const FULL_EXAM_MINUTES = 90;
+const FULL_EXAM_QUESTION_LIMIT = 90;
+const CATEGORY_QUESTION_LIMIT = 25;
 
 const startBtn = document.getElementById("start-quiz");
 const setupScreen = document.getElementById("setup-screen");
 const quizScreen = document.getElementById("quiz-screen");
-
 const studentNameInput = document.getElementById("student-name");
 const quizSelect = document.getElementById("quiz-select");
-
 const examOptions = document.getElementById("exam-options");
 const timedExamToggle = document.getElementById("timed-exam-toggle");
-
 const examTimer = document.getElementById("exam-timer");
 const timerDisplay = document.getElementById("timer-display");
-
 const questionCount = document.getElementById("question-count");
 const questionText = document.getElementById("question-text");
 const choicesContainer = document.getElementById("choices-container");
-
 const nextBtn = document.getElementById("next-btn");
 const prevBtn = document.getElementById("prev-btn");
-
 const progressBar = document.getElementById("progress-bar");
 
-addQuizStyles();
-updateExamOptions();
+initializeQuizPage();
 
-startBtn.addEventListener("click", startQuiz);
-quizSelect.addEventListener("change", updateExamOptions);
+function initializeQuizPage() {
+  const requiredElements = {
+    startBtn,
+    setupScreen,
+    quizScreen,
+    studentNameInput,
+    quizSelect,
+    examOptions,
+    timedExamToggle,
+    examTimer,
+    timerDisplay,
+    questionCount,
+    questionText,
+    choicesContainer,
+    nextBtn,
+    prevBtn,
+    progressBar
+  };
+
+  const missingElements = Object.entries(requiredElements)
+    .filter(([, element]) => !element)
+    .map(([name]) => name);
+
+  if (missingElements.length > 0) {
+    console.error(
+      "[Quiz] Cannot initialize. Missing page elements:",
+      missingElements
+    );
+    return;
+  }
+
+  addQuizStyles();
+  restoreTechHandle();
+  updateExamOptions();
+
+  startBtn.addEventListener("click", startQuiz);
+  quizSelect.addEventListener("change", updateExamOptions);
+  nextBtn.addEventListener("click", goToNextQuestion);
+  prevBtn.addEventListener("click", goToPreviousQuestion);
+}
+
+function restoreTechHandle() {
+  const savedHandle = safeStorageGet("techHandle");
+
+  if (savedHandle) {
+    studentNameInput.value = savedHandle;
+  }
+}
 
 function updateExamOptions() {
-  const isFullExam =
-    quizSelect.value === "Full A+ Exam";
+  const isFullExam = quizSelect.value === "Full A+ Exam";
 
-  examOptions.classList.toggle(
-    "hidden",
-    !isFullExam
-  );
+  examOptions.classList.toggle("hidden", !isFullExam);
 
   if (!isFullExam) {
     timedExamToggle.checked = false;
@@ -53,54 +94,60 @@ function updateExamOptions() {
 }
 
 function startQuiz() {
-  const techHandle =
-    studentNameInput.value.trim();
+  if (quizFinished) {
+    quizFinished = false;
+  }
+
+  const techHandle = studentNameInput.value.trim();
 
   if (!techHandle) {
     alert("Please enter your Tech Handle.");
+    studentNameInput.focus();
     return;
   }
 
   selectedQuizName = quizSelect.value;
-
   timedExamEnabled =
     selectedQuizName === "Full A+ Exam" &&
     timedExamToggle.checked;
 
-  currentQuestions =
-    getQuestionsByCategory(selectedQuizName);
+  const sourceQuestions = getQuestionsByCategory(selectedQuizName);
+  const validation = validateQuestionCollection(
+    sourceQuestions,
+    selectedQuizName
+  );
 
-  if (
-    !Array.isArray(currentQuestions) ||
-    currentQuestions.length === 0
-  ) {
+  if (validation.validQuestions.length === 0) {
+    console.error(
+      `[Quiz] "${selectedQuizName}" has no valid questions.`,
+      validation.invalidEntries
+    );
     alert(
-      "No questions have been added to this category yet."
+      "No valid questions are available in this category yet. Please choose another training set."
     );
     return;
   }
 
-  currentQuestions =
-    shuffleArray(currentQuestions);
-
-  if (selectedQuizName === "Full A+ Exam") {
-    currentQuestions =
-      currentQuestions.slice(0, 90);
-  } else if (currentQuestions.length > 25) {
-    currentQuestions =
-      currentQuestions.slice(0, 25);
+  if (validation.invalidEntries.length > 0) {
+    console.warn(
+      `[Quiz] Skipped ${validation.invalidEntries.length} malformed or empty question entr${validation.invalidEntries.length === 1 ? "y" : "ies"} in "${selectedQuizName}".`,
+      validation.invalidEntries
+    );
   }
 
-  userAnswers =
-    new Array(currentQuestions.length).fill(null);
+  const questionLimit =
+    selectedQuizName === "Full A+ Exam"
+      ? FULL_EXAM_QUESTION_LIMIT
+      : CATEGORY_QUESTION_LIMIT;
 
+  currentQuestions = shuffleArray(validation.validQuestions)
+    .slice(0, questionLimit);
+
+  userAnswers = new Array(currentQuestions.length).fill(null);
   currentQuestionIndex = 0;
   quizFinished = false;
 
-  localStorage.setItem(
-    "techHandle",
-    techHandle
-  );
+  safeStorageSet("techHandle", techHandle);
 
   setupScreen.classList.add("hidden");
   quizScreen.classList.remove("hidden");
@@ -111,115 +158,258 @@ function startQuiz() {
     hideExamTimer();
   }
 
+  console.info("[Quiz] Training set started.", {
+    category: selectedQuizName,
+    sourceEntries: validation.sourceLength,
+    validEntries: validation.validQuestions.length,
+    skippedEntries: validation.invalidEntries.length,
+    selectedQuestions: currentQuestions.length,
+    timedExam: timedExamEnabled
+  });
+
   renderQuestion();
 }
 
 function getQuestionsByCategory(category) {
-  switch (category) {
-    case "Hardware":
-      return hardwareQuestions;
+  const categories = {
+    Hardware:
+      typeof hardwareQuestions !== "undefined"
+        ? hardwareQuestions
+        : [],
+    Networking:
+      typeof networkingQuestions !== "undefined"
+        ? networkingQuestions
+        : [],
+    "Mobile Devices":
+      typeof mobileDevicesQuestions !== "undefined"
+        ? mobileDevicesQuestions
+        : [],
+    "Virtualization & Cloud":
+      typeof virtualizationCloudQuestions !== "undefined"
+        ? virtualizationCloudQuestions
+        : [],
+    "Hardware & Network Troubleshooting":
+      typeof hardwareNetworkTroubleshootingQuestions !== "undefined"
+        ? hardwareNetworkTroubleshootingQuestions
+        : [],
+    "Operating Systems":
+      typeof operatingSystemsQuestions !== "undefined"
+        ? operatingSystemsQuestions
+        : [],
+    Security:
+      typeof securityQuestions !== "undefined"
+        ? securityQuestions
+        : [],
+    "Software Troubleshooting":
+      typeof softwareTroubleshootingQuestions !== "undefined"
+        ? softwareTroubleshootingQuestions
+        : [],
+    "Operational Procedures":
+      typeof operationalProceduresQuestions !== "undefined"
+        ? operationalProceduresQuestions
+        : [],
+    "Full A+ Exam":
+      typeof questionBank !== "undefined"
+        ? questionBank
+        : []
+  };
 
-    case "Networking":
-      return networkingQuestions;
+  return categories[category] || [];
+}
 
-    case "Mobile Devices":
-      return mobileDevicesQuestions;
-
-    case "Virtualization & Cloud":
-      return virtualizationCloudQuestions;
-
-    case "Hardware & Network Troubleshooting":
-      return hardwareNetworkTroubleshootingQuestions;
-
-    case "Operating Systems":
-      return operatingSystemsQuestions;
-
-    case "Security":
-      return securityQuestions;
-
-    case "Software Troubleshooting":
-      return softwareTroubleshootingQuestions;
-
-    case "Operational Procedures":
-      return operationalProceduresQuestions;
-
-    case "Full A+ Exam":
-      return questionBank;
-
-    default:
-      return [];
+function validateQuestionCollection(source, categoryName) {
+  if (!Array.isArray(source)) {
+    return {
+      sourceLength: 0,
+      validQuestions: [],
+      invalidEntries: [
+        {
+          index: null,
+          id: null,
+          reason: `${categoryName} is not an array`
+        }
+      ]
+    };
   }
+
+  const validQuestions = [];
+  const invalidEntries = [];
+
+  // Array.from converts sparse-array holes into explicit undefined values,
+  // allowing every bad slot to be detected and reported.
+  Array.from(source).forEach((question, index) => {
+    const reason = getQuestionValidationError(question);
+
+    if (reason) {
+      invalidEntries.push({
+        index,
+        id:
+          question &&
+          typeof question === "object" &&
+          typeof question.id === "string"
+            ? question.id
+            : null,
+        reason
+      });
+      return;
+    }
+
+    validQuestions.push({
+      ...question,
+      question: question.question.trim(),
+      choices: question.choices.map((choice) => choice.trim()),
+      answer: question.answer.trim()
+    });
+  });
+
+  return {
+    sourceLength: source.length,
+    validQuestions,
+    invalidEntries
+  };
+}
+
+function getQuestionValidationError(question) {
+  if (!question || typeof question !== "object" || Array.isArray(question)) {
+    return "Entry is null, empty, or not a question object";
+  }
+
+  if (
+    typeof question.question !== "string" ||
+    question.question.trim() === ""
+  ) {
+    return "Question text is missing";
+  }
+
+  if (!Array.isArray(question.choices) || question.choices.length < 2) {
+    return "At least two answer choices are required";
+  }
+
+  if (
+    question.choices.some(
+      (choice) =>
+        typeof choice !== "string" ||
+        choice.trim() === ""
+    )
+  ) {
+    return "One or more answer choices are empty or invalid";
+  }
+
+  if (
+    typeof question.answer !== "string" ||
+    question.answer.trim() === ""
+  ) {
+    return "Correct answer is missing";
+  }
+
+  const normalizedChoices = question.choices.map((choice) => choice.trim());
+
+  if (!normalizedChoices.includes(question.answer.trim())) {
+    return "Correct answer does not match any answer choice";
+  }
+
+  return null;
 }
 
 function renderQuestion() {
-  const question =
-    currentQuestions[currentQuestionIndex];
-
-  if (!question) {
-    console.error(
-      "Question not found.",
-      currentQuestionIndex,
-      currentQuestions.length
-    );
-
-    finishQuiz();
+  if (quizFinished) {
     return;
   }
 
-  questionCount.innerText =
+  // This is a second line of defense. Questions are validated at startup,
+  // but a later accidental mutation still cannot terminate the set early.
+  while (
+    currentQuestionIndex < currentQuestions.length &&
+    getQuestionValidationError(currentQuestions[currentQuestionIndex])
+  ) {
+    console.error(
+      "[Quiz] Removed an invalid question found during rendering.",
+      {
+        index: currentQuestionIndex,
+        question: currentQuestions[currentQuestionIndex]
+      }
+    );
+
+    currentQuestions.splice(currentQuestionIndex, 1);
+    userAnswers.splice(currentQuestionIndex, 1);
+  }
+
+  if (currentQuestions.length === 0) {
+    stopExamTimer();
+    alert(
+      "This training set contains no usable questions. Please choose another category."
+    );
+    returnToSetup();
+    return;
+  }
+
+  if (currentQuestionIndex >= currentQuestions.length) {
+    currentQuestionIndex = currentQuestions.length - 1;
+  }
+
+  const question = currentQuestions[currentQuestionIndex];
+
+  questionCount.textContent =
     `Rep ${currentQuestionIndex + 1} of ${currentQuestions.length}`;
-
-  questionText.innerText =
-    question.question;
-
-  choicesContainer.innerHTML = "";
+  questionText.textContent = question.question;
+  choicesContainer.replaceChildren();
 
   question.choices.forEach((choice) => {
-    const button =
-      document.createElement("button");
+    const button = document.createElement("button");
 
+    button.type = "button";
     button.classList.add("choice");
-    button.innerText = choice;
+    button.textContent = choice;
 
-    if (
-      userAnswers[currentQuestionIndex] === choice
-    ) {
+    if (userAnswers[currentQuestionIndex] === choice) {
       button.classList.add("selected");
     }
 
     button.addEventListener("click", () => {
-      userAnswers[currentQuestionIndex] = choice;
-      renderQuestion();
+      selectAnswer(choice);
     });
 
     choicesContainer.appendChild(button);
   });
 
   const percent =
-    ((currentQuestionIndex + 1) /
-      currentQuestions.length) *
-    100;
+    ((currentQuestionIndex + 1) / currentQuestions.length) * 100;
 
-  progressBar.style.width =
-    `${percent}%`;
-
-  prevBtn.disabled =
-    currentQuestionIndex === 0;
+  progressBar.style.width = `${percent}%`;
+  prevBtn.disabled = currentQuestionIndex === 0;
 
   const isLastQuestion =
-    currentQuestionIndex >=
-    currentQuestions.length - 1;
+    currentQuestionIndex === currentQuestions.length - 1;
 
-  nextBtn.innerText =
-    isLastQuestion
-      ? "Finish Set 🏀"
-      : "Next Rep ➜";
+  nextBtn.textContent = isLastQuestion
+    ? "Finish Set 🏀"
+    : "Next Rep ➜";
 }
 
-nextBtn.addEventListener("click", () => {
+function selectAnswer(choice) {
+  if (quizFinished || !currentQuestions[currentQuestionIndex]) {
+    return;
+  }
+
+  userAnswers[currentQuestionIndex] = choice;
+
+  choicesContainer
+    .querySelectorAll(".choice")
+    .forEach((button) => {
+      button.classList.toggle(
+        "selected",
+        button.textContent === choice
+      );
+    });
+}
+
+function goToNextQuestion() {
+  if (quizFinished || currentQuestions.length === 0) {
+    return;
+  }
+
   const isLastQuestion =
-    currentQuestionIndex >=
-    currentQuestions.length - 1;
+    currentQuestionIndex >= currentQuestions.length - 1;
 
   if (isLastQuestion) {
     finishQuiz();
@@ -228,75 +418,110 @@ nextBtn.addEventListener("click", () => {
 
   currentQuestionIndex += 1;
   renderQuestion();
-});
+}
 
-prevBtn.addEventListener("click", () => {
-  if (currentQuestionIndex > 0) {
-    currentQuestionIndex -= 1;
-    renderQuestion();
-  }
-});
-
-function finishQuiz() {
+function goToPreviousQuestion() {
   if (quizFinished) {
     return;
   }
 
-  quizFinished = true;
+  if (currentQuestionIndex > 0) {
+    currentQuestionIndex -= 1;
+    renderQuestion();
+  }
+}
 
+function finishQuiz() {
+  if (quizFinished || currentQuestions.length === 0) {
+    return;
+  }
+
+  quizFinished = true;
+  nextBtn.disabled = true;
+  prevBtn.disabled = true;
   stopExamTimer();
 
-  let correctCount = 0;
+  const finalValidation = validateQuestionCollection(
+    currentQuestions,
+    selectedQuizName
+  );
 
-  currentQuestions.forEach(
-    (question, index) => {
-      if (
-        question &&
-        userAnswers[index] === question.answer
-      ) {
-        correctCount += 1;
-      }
+  if (finalValidation.invalidEntries.length > 0) {
+    console.error(
+      "[Quiz] Invalid questions were removed before results were saved.",
+      finalValidation.invalidEntries
+    );
+  }
+
+  const validQuestions = [];
+  const validAnswers = [];
+
+  currentQuestions.forEach((question, index) => {
+    if (!getQuestionValidationError(question)) {
+      validQuestions.push(question);
+      validAnswers.push(
+        typeof userAnswers[index] === "string"
+          ? userAnswers[index]
+          : null
+      );
     }
+  });
+
+  if (validQuestions.length === 0) {
+    console.error("[Quiz] No valid questions remained at submission.");
+    alert(
+      "Your results could not be created because the training data was invalid."
+    );
+    quizFinished = false;
+    nextBtn.disabled = false;
+    prevBtn.disabled = currentQuestionIndex === 0;
+    return;
+  }
+
+  const correctCount = validQuestions.reduce(
+    (total, question, index) =>
+      total + (validAnswers[index] === question.answer ? 1 : 0),
+    0
   );
 
+  const totalQuestions = validQuestions.length;
   const scorePercent = Math.round(
-    (correctCount /
-      currentQuestions.length) *
-      100
+    (correctCount / totalQuestions) * 100
   );
-
   const techHandle =
-    localStorage.getItem("techHandle") ||
-    "Anonymous";
+    safeStorageGet("techHandle") || "Anonymous";
+  const streakData = updateStreak();
 
-  const streakData =
-    updateStreak();
-
-  updateUserStats(
-    scorePercent,
-    currentQuestions.length
-  );
+  updateUserStats(scorePercent, totalQuestions);
 
   const latestResult = {
+    version: 2,
+    completedAt: new Date().toISOString(),
     techHandle,
     examName: selectedQuizName,
     scorePercent,
     correctCount,
-    totalQuestions:
-      currentQuestions.length,
-    questions:
-      currentQuestions,
-    userAnswers,
-    streak:
-      streakData.currentStreak,
-    timedExam:
-      timedExamEnabled
+    totalQuestions,
+    questions: validQuestions,
+    userAnswers: validAnswers,
+    streak: streakData.currentStreak,
+    timedExam: timedExamEnabled
   };
 
-  localStorage.setItem(
+  const resultSaved = safeStorageSet(
     "latestResult",
     JSON.stringify(latestResult)
   );
+
+  if (!resultSaved) {
+    alert(
+      "Your browser could not save the results. Please check its storage settings and try again."
+    );
+    quizFinished = false;
+    nextBtn.disabled = false;
+    prevBtn.disabled = currentQuestionIndex === 0;
+    return;
+  }
 
   saveToLeaderboard(
     techHandle,
@@ -304,99 +529,120 @@ function finishQuiz() {
     scorePercent
   );
 
-  window.location.href =
-    "results.html";
+  console.info("[Quiz] Training set completed.", {
+    category: selectedQuizName,
+    correctCount,
+    totalQuestions,
+    scorePercent
+  });
+
+  window.location.assign("results.html");
 }
 
-function updateUserStats(
-  score,
-  repsCompleted
-) {
-  const stats =
-    JSON.parse(
-      localStorage.getItem("userStats")
-    ) || {
-      totalSetsCompleted: 0,
-      totalQuestionsAnswered: 0,
-      bestScore: 0
-    };
+function returnToSetup() {
+  currentQuestions = [];
+  userAnswers = [];
+  currentQuestionIndex = 0;
+  quizFinished = false;
+  nextBtn.disabled = false;
+  prevBtn.disabled = true;
+  quizScreen.classList.add("hidden");
+  setupScreen.classList.remove("hidden");
+}
 
-  stats.totalSetsCompleted += 1;
-
-  stats.totalQuestionsAnswered +=
-    repsCompleted;
-
-  if (score > stats.bestScore) {
-    stats.bestScore = score;
-  }
-
-  localStorage.setItem(
-    "userStats",
-    JSON.stringify(stats)
+function updateUserStats(score, repsCompleted) {
+  const defaultStats = {
+    totalSetsCompleted: 0,
+    totalQuestionsAnswered: 0,
+    bestScore: 0
+  };
+  const savedStats = safeJsonParse(
+    safeStorageGet("userStats"),
+    defaultStats,
+    "userStats"
   );
+  const stats =
+    savedStats &&
+    typeof savedStats === "object" &&
+    !Array.isArray(savedStats)
+      ? savedStats
+      : { ...defaultStats };
+
+  stats.totalSetsCompleted =
+    toNonNegativeNumber(stats.totalSetsCompleted) + 1;
+  stats.totalQuestionsAnswered =
+    toNonNegativeNumber(stats.totalQuestionsAnswered) +
+    repsCompleted;
+  stats.bestScore = Math.max(
+    toNonNegativeNumber(stats.bestScore),
+    score
+  );
+
+  safeStorageSet("userStats", JSON.stringify(stats));
 }
 
-function saveToLeaderboard(
-  techHandle,
-  examName,
-  score
-) {
-  const leaderboardKey =
-    `leaderboard_${examName}`;
-
-  const leaderboard =
-    JSON.parse(
-      localStorage.getItem(
-        leaderboardKey
-      )
-    ) || [];
+function saveToLeaderboard(techHandle, examName, score) {
+  const leaderboardKey = `leaderboard_${examName}`;
+  const savedLeaderboard = safeJsonParse(
+    safeStorageGet(leaderboardKey),
+    [],
+    leaderboardKey
+  );
+  const leaderboard = Array.isArray(savedLeaderboard)
+    ? savedLeaderboard
+    : [];
 
   leaderboard.push({
     techHandle,
     examName,
     score,
-    date:
-      new Date().toLocaleDateString()
+    date: new Date().toLocaleDateString()
   });
 
-  localStorage.setItem(
+  safeStorageSet(
     leaderboardKey,
     JSON.stringify(leaderboard)
   );
 }
 
 function updateStreak() {
-  const today =
-    getTodayString();
-
-  const yesterday =
-    getYesterdayString();
-
+  const defaultStreak = {
+    currentStreak: 0,
+    lastTrainingDate: null
+  };
+  const savedStreak = safeJsonParse(
+    safeStorageGet("streakData"),
+    defaultStreak,
+    "streakData"
+  );
   const streakData =
-    JSON.parse(
-      localStorage.getItem("streakData")
-    ) || {
-      currentStreak: 0,
-      lastTrainingDate: null
-    };
+    savedStreak &&
+    typeof savedStreak === "object" &&
+    !Array.isArray(savedStreak)
+      ? savedStreak
+      : { ...defaultStreak };
+  const today = getLocalDateString(new Date());
+  const yesterdayDate = new Date();
 
-  if (
-    streakData.lastTrainingDate === today
-  ) {
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+
+  const yesterday = getLocalDateString(yesterdayDate);
+
+  streakData.currentStreak = toNonNegativeNumber(
+    streakData.currentStreak
+  );
+
+  if (streakData.lastTrainingDate === today) {
     return streakData;
   }
 
-  if (
+  streakData.currentStreak =
     streakData.lastTrainingDate === yesterday
-  ) {
-    streakData.currentStreak += 1;
-  } else {
-    streakData.currentStreak = 1;
-  }
-
+      ? streakData.currentStreak + 1
+      : 1;
   streakData.lastTrainingDate = today;
 
-  localStorage.setItem(
+  safeStorageSet(
     "streakData",
     JSON.stringify(streakData)
   );
@@ -404,43 +650,31 @@ function updateStreak() {
   return streakData;
 }
 
-function getTodayString() {
-  return new Date()
-    .toISOString()
-    .split("T")[0];
+function getLocalDateString(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
-function getYesterdayString() {
-  const yesterday = new Date();
+function toNonNegativeNumber(value) {
+  const number = Number(value);
 
-  yesterday.setDate(
-    yesterday.getDate() - 1
-  );
-
-  return yesterday
-    .toISOString()
-    .split("T")[0];
+  return Number.isFinite(number) && number >= 0
+    ? number
+    : 0;
 }
 
 function shuffleArray(array) {
-  const shuffled = [...array];
+  const shuffled = Array.from(array);
 
-  for (
-    let i = shuffled.length - 1;
-    i > 0;
-    i -= 1
-  ) {
-    const randomIndex =
-      Math.floor(
-        Math.random() * (i + 1)
-      );
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
 
-    [
-      shuffled[i],
-      shuffled[randomIndex]
-    ] = [
+    [shuffled[index], shuffled[randomIndex]] = [
       shuffled[randomIndex],
-      shuffled[i]
+      shuffled[index]
     ];
   }
 
@@ -449,101 +683,96 @@ function shuffleArray(array) {
 
 function startExamTimer(minutes) {
   stopExamTimer();
-
   examTimer.classList.remove("hidden");
-
-  examEndTime =
-    Date.now() +
-    minutes * 60 * 1000;
-
+  examEndTime = Date.now() + minutes * 60 * 1000;
   updateTimerDisplay();
-
-  timerInterval =
-    setInterval(
-      updateTimerDisplay,
-      1000
-    );
+  timerInterval = window.setInterval(updateTimerDisplay, 1000);
 }
 
 function updateTimerDisplay() {
-  const remaining =
-    examEndTime - Date.now();
+  const remaining = examEndTime - Date.now();
 
   if (remaining <= 0) {
-    timerDisplay.innerText = "00:00";
-
+    timerDisplay.textContent = "00:00";
     stopExamTimer();
-
-    alert(
-      "Time is up. Your exam will now be submitted."
-    );
-
+    alert("Time is up. Your exam will now be submitted.");
     finishQuiz();
     return;
   }
 
-  const totalSeconds =
-    Math.floor(remaining / 1000);
+  const totalSeconds = Math.floor(remaining / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
 
-  const minutes =
-    Math.floor(totalSeconds / 60);
-
-  const seconds =
-    totalSeconds % 60;
-
-  timerDisplay.innerText =
+  timerDisplay.textContent =
     `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 
-  examTimer.classList.remove(
-    "timer-warning",
-    "timer-danger"
-  );
+  examTimer.classList.remove("timer-warning", "timer-danger");
 
   if (totalSeconds <= 300) {
-    examTimer.classList.add(
-      "timer-danger"
-    );
+    examTimer.classList.add("timer-danger");
   } else if (totalSeconds <= 900) {
-    examTimer.classList.add(
-      "timer-warning"
-    );
+    examTimer.classList.add("timer-warning");
   }
 }
 
 function stopExamTimer() {
-  if (timerInterval) {
-    clearInterval(timerInterval);
+  if (timerInterval !== null) {
+    window.clearInterval(timerInterval);
     timerInterval = null;
   }
 }
 
 function hideExamTimer() {
   stopExamTimer();
-
   examTimer.classList.add("hidden");
+  examTimer.classList.remove("timer-warning", "timer-danger");
+  timerDisplay.textContent = "90:00";
+}
 
-  examTimer.classList.remove(
-    "timer-warning",
-    "timer-danger"
-  );
+function safeStorageGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (error) {
+    console.error(`[Storage] Could not read "${key}".`, error);
+    return null;
+  }
+}
 
-  timerDisplay.innerText = "90:00";
+function safeStorageSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    console.error(`[Storage] Could not save "${key}".`, error);
+    return false;
+  }
+}
+
+function safeJsonParse(value, fallback, label) {
+  if (typeof value !== "string" || value.trim() === "") {
+    return fallback;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    console.warn(
+      `[Storage] Ignoring invalid JSON stored for "${label}".`,
+      error
+    );
+    return fallback;
+  }
 }
 
 function addQuizStyles() {
-  if (
-    document.getElementById(
-      "quiz-option-styles"
-    )
-  ) {
+  if (document.getElementById("quiz-option-styles")) {
     return;
   }
 
-  const style =
-    document.createElement("style");
+  const style = document.createElement("style");
 
   style.id = "quiz-option-styles";
-
   style.textContent = `
     .exam-options {
       display: flex;
